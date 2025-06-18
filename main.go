@@ -13,6 +13,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	version = "0.1.0"
+)
+
 var (
 	noTest  bool
 	verbose bool
@@ -185,6 +189,15 @@ var nameCmd = &cobra.Command{
 	},
 }
 
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Print the version number",
+	Long:  "Print the version number of chain-rpc",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println(version)
+	},
+}
+
 func init() {
 	rootCmd.Flags().BoolVar(&noTest, "no-test", false, "return RPC URLs without testing them")
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
@@ -209,6 +222,7 @@ func init() {
 	rootCmd.AddCommand(cacheCmd)
 	rootCmd.AddCommand(idCmd)
 	rootCmd.AddCommand(nameCmd)
+	rootCmd.AddCommand(versionCmd)
 }
 
 func main() {
