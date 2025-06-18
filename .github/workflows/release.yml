@@ -1,0 +1,46 @@
+name: goreleaser
+
+on:
+  push:
+    # Run only on new tags
+    tags:
+      - 'v*' # This pattern matches tags like v1.0, v2.3.4, etc.
+    workflow_dispatch:
+
+permissions:
+  contents: write # Needed to create a GitHub release
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      # Debug step:
+      - name: Verify HOMEBREW_PAT is set
+        run: |
+          if [ -z ${{ secrets.HOMEBREW_PAT }} ]; then
+            echo "❌ HOMEBREW_PAT is empty"
+            exit 1
+          fi
+          echo "✅ HOMEBREW_PAT is present and ${{ secrets.HOMEBREW_PAT }} characters long"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # This is required for GoReleaser to determine the changelog
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable' # Or a specific version
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          # 'latest' is a valid option, or you can pin to a specific version like '~> v2'
+          version: latest
+          args: release --clean
+        env:
+          # The GITHUB_TOKEN is automatically created by GitHub Actions
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_PAT: ${{ secrets.HOMEBREW_PAT }}

@@ -1,0 +1,51 @@
+version: 2
+
+project_name: chain-rpc
+
+builds:
+  - # This is the configuration for your main build.
+    id: chain-rpc
+    # Path to your main package.
+    main: .
+    # The name of the binary that will be produced.
+    binary: chain-rpc
+    # Inject version information using ldflags.
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    # A list of OS/Architecture pairs to build for.
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+# The `archives` section defines how to package the built binaries.
+archives:
+  - # This archive configuration matches the build with the id 'chain-rpc'.
+    id: chain-rpc
+    ids:
+      - chain-rpc
+    # Naming template for the archive files.
+    name_template: '{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}'
+
+# The `checksum` section generates a file with SHA256 sums for all artifacts.
+checksum:
+  name_template: 'checksums.txt'
+
+# The `release` section tells GoReleaser how to create the GitHub Release.
+release:
+  # If set to auto, GoReleaser will create a release if the Git tag is not a prerelease.
+  prerelease: auto
+
+homebrew_casks:
+  - name: chain-rpc
+    description: "Fast CLI tool for finding public RPC endpoints for blockchain networks"
+    homepage: "https://github.com/nksazonov/chain-rpc"
+    repository:
+      owner: nksazonov
+      name: homebrew-chain-rpc
+      token: "{{ .Env.HOMEBREW_PAT }}"
+    directory: Casks
+    ids:
+      - chain-rpc
