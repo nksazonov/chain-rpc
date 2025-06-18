@@ -28,7 +28,7 @@ var rootCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		chain.SetVerbose(verbose)
 		chain.SetForceRebuild(force)
-		
+
 		chainData, err := getChainData(args[0])
 		if err != nil {
 			return err
@@ -62,7 +62,7 @@ var allCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		chain.SetVerbose(verbose)
 		chain.SetForceRebuild(force)
-		
+
 		chainData, err := getChainData(args[0])
 		if err != nil {
 			return err
@@ -80,14 +80,14 @@ var allCmd = &cobra.Command{
 			return nil
 		}
 
-		workingRPCs := rpc.FindAllWorkingRPCs(rpcUrls, chainData.ChainID, timeout)
-		if len(workingRPCs) == 0 {
-			return fmt.Errorf("all known rpc urls are failing. Try searching for it manually")
+		workingRPCs, err := rpc.FindAllWorkingRPCs(rpcUrls, chainData.ChainID, timeout)
+		if err != nil {
+			return err
 		}
 
 		// Shuffle the results for better load distribution
-		rand.Seed(time.Now().UnixNano())
-		rand.Shuffle(len(workingRPCs), func(i, j int) {
+		r := rand.New(rand.NewSource(time.Now().UnixNano()))
+		r.Shuffle(len(workingRPCs), func(i, j int) {
 			workingRPCs[i], workingRPCs[j] = workingRPCs[j], workingRPCs[i]
 		})
 
@@ -98,13 +98,12 @@ var allCmd = &cobra.Command{
 	},
 }
 
-
 func getChainData(identifier string) (*chain.ChainData, error) {
 	// Try to parse as chain ID first
 	if chainId, err := strconv.ParseUint(identifier, 10, 64); err == nil {
 		return chain.FetchChainData(chainId)
 	}
-	
+
 	// If not a number, treat as chain name
 	return chain.FetchChainDataByName(identifier)
 }
@@ -118,7 +117,6 @@ func extractRPCUrls(rpcs []chain.RPC) []string {
 	}
 	return urls
 }
-
 
 var cacheCmd = &cobra.Command{
 	Use:   "cache",
@@ -152,12 +150,12 @@ var idCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		chain.SetVerbose(verbose)
 		chain.SetForceRebuild(force)
-		
+
 		chainData, err := chain.FetchChainDataByName(args[0])
 		if err != nil {
 			return err
 		}
-		
+
 		fmt.Println(chainData.ChainID)
 		return nil
 	},
@@ -171,17 +169,17 @@ var nameCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		chain.SetVerbose(verbose)
 		chain.SetForceRebuild(force)
-		
+
 		chainId, err := strconv.ParseUint(args[0], 10, 64)
 		if err != nil {
 			return fmt.Errorf("chainId must be a valid number")
 		}
-		
+
 		chainData, err := chain.FetchChainData(chainId)
 		if err != nil {
 			return err
 		}
-		
+
 		fmt.Println(chainData.Name)
 		return nil
 	},
@@ -192,21 +190,21 @@ func init() {
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
 	rootCmd.Flags().BoolVarP(&force, "force", "f", false, "force rebuild cache")
 	rootCmd.Flags().DurationVarP(&timeout, "timeout", "t", 200*time.Millisecond, "timeout for RPC testing")
-	
+
 	allCmd.Flags().BoolVar(&noTest, "no-test", false, "return all RPC URLs without testing them")
 	allCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
 	allCmd.Flags().BoolVarP(&force, "force", "f", false, "force rebuild cache")
 	allCmd.Flags().DurationVarP(&timeout, "timeout", "t", 200*time.Millisecond, "timeout for RPC testing")
-	
+
 	cacheCmd.AddCommand(cacheCleanCmd)
 	cacheCmd.AddCommand(cacheBuildCmd)
-	
+
 	idCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
 	idCmd.Flags().BoolVarP(&force, "force", "f", false, "force rebuild cache")
-	
+
 	nameCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
 	nameCmd.Flags().BoolVarP(&force, "force", "f", false, "force rebuild cache")
-	
+
 	rootCmd.AddCommand(allCmd)
 	rootCmd.AddCommand(cacheCmd)
 	rootCmd.AddCommand(idCmd)

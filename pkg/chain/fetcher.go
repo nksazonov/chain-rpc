@@ -57,6 +57,10 @@ const (
 	CACHE_TTL       = 30 * 24 * time.Hour // 1 month
 )
 
+var (
+	ErrChainNotFound = fmt.Errorf("specified chain does not exist or is not known at `chainlist.org`")
+)
+
 func SetVerbose(verbose bool) {
 	isVerbose = verbose
 }
@@ -233,7 +237,7 @@ func loadChainByID(chainId uint64) (*ChainData, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("specified chain does not exist or is not known at `chainlist.org`")
+	return nil, ErrChainNotFound
 }
 
 func loadChainByName(name string) (*ChainData, error) {
@@ -282,7 +286,7 @@ func findChainIDByName(normalizedName string) (uint64, error) {
 		}
 	}
 
-	return 0, fmt.Errorf("specified chain does not exist or is not known at `chainlist.org`")
+	return 0, ErrChainNotFound
 }
 
 func findChainInByID(decoder *json.Decoder, targetChainId uint64) (*ChainData, error) {
@@ -327,7 +331,7 @@ func findChainInByID(decoder *json.Decoder, targetChainId uint64) (*ChainData, e
 		}
 	}
 
-	return nil, fmt.Errorf("specified chain does not exist or is not known at `chainlist.org`")
+	return nil, ErrChainNotFound
 }
 
 func findChainIDInByName(decoder *json.Decoder, targetName string) (uint64, error) {
@@ -367,7 +371,7 @@ func findChainIDInByName(decoder *json.Decoder, targetName string) (uint64, erro
 		}
 	}
 
-	return 0, fmt.Errorf("specified chain does not exist or is not known at `chainlist.org`")
+	return 0, ErrChainNotFound
 }
 
 func skipValue(decoder *json.Decoder) error {
