@@ -40,9 +40,11 @@ type ChainData struct {
 	ChainSlug      string         `json:"chainSlug"`
 }
 
+type NameToIdMap = map[string]uint64
+
 type CacheData struct {
 	ByID   map[uint64]*ChainData `json:"byId"`
-	ByName map[string]uint64     `json:"byName"`
+	ByName NameToIdMap           `json:"byName"`
 }
 
 var (
@@ -70,7 +72,7 @@ func SetForceRebuild(force bool) {
 }
 
 func normalizeChainName(name string) string {
-	return strings.ToLower(strings.TrimSpace(name))
+	return strings.ReplaceAll(strings.ToLower(strings.TrimSpace(name)), " ", "-")
 }
 
 func verbosePrintf(format string, args ...any) {
@@ -160,7 +162,7 @@ func buildCache() error {
 	// Process chains concurrently
 	cacheData := &CacheData{
 		ByID:   make(map[uint64]*ChainData),
-		ByName: make(map[string]uint64),
+		ByName: make(NameToIdMap),
 	}
 
 	var wg sync.WaitGroup
@@ -253,40 +255,66 @@ func loadChainByName(name string) (*ChainData, error) {
 	return loadChainByID(chainId)
 }
 
-func findChainIDByName(normalizedName string) (uint64, error) {
+func loadNameMapping() (NameToIdMap, error) {
 	file, err := os.Open(cacheFile)
 	if err != nil {
-		return 0, fmt.Errorf("failed to open cache file: %v", err)
+		return nil, fmt.Errorf("failed to open cache file: %v", err)
 	}
 	defer file.Close()
 
-	decoder := json.NewDecoder(file)
-	decoder.UseNumber()
-
-	// Read opening brace
-	if _, err := decoder.Token(); err != nil {
-		return 0, fmt.Errorf("failed to read cache file: %v", err)
+	var cacheData CacheData
+	if err := json.NewDecoder(file).Decode(&cacheData); err != nil {
+		return nil, fmt.Errorf("failed to decode cache file: %v", err)
 	}
 
-	// Read through the cache structure
-	for decoder.More() {
-		token, err := decoder.Token()
-		if err != nil {
-			return 0, fmt.Errorf("failed to read cache file: %v", err)
+	return cacheData.ByName, nil
+}
+
+func findChainIDByName(normalizedName string) (uint64, error) {
+	// Load the entire name mapping into memory
+	nameMapping, err := loadNameMapping()
+	if err != nil {
+		return 0, err
+	}
+
+	// Look up the chain ID
+	chainID, exists := nameMapping[normalizedName]
+	if !exists {
+		// look for ethereum mainnet or ethereum-<name> variations
+		if chainId, err := findChainIdByPartialMatch(nameMapping, "ethereum-"+normalizedName); err == nil {
+			return chainId, nil
+		}
+		// look for mainnet variations
+		if chainId, err := findChainIdByPartialMatch(nameMapping, normalizedName+"-mainnet"); err == nil {
+			return chainId, nil
 		}
 
-		if str, ok := token.(string); ok && str == "byName" {
-			// Found byName section, now look for our name
-			return findChainIDInByName(decoder, normalizedName)
-		} else {
-			// Skip this field
-			if err := skipValue(decoder); err != nil {
-				return 0, err
-			}
+		// look for partial matches
+		return findChainIdByPartialMatch(nameMapping, normalizedName)
+	}
+
+	return chainID, nil
+}
+
+func findChainIdByPartialMatch(nameMapping NameToIdMap, name string) (uint64, error) {
+	matchingKeys := make([]string, 0)
+	for key := range nameMapping {
+		if strings.Contains(key, name) {
+			matchingKeys = append(matchingKeys, key)
 		}
 	}
 
-	return 0, ErrChainNotFound
+	if len(matchingKeys) == 1 {
+		return nameMapping[matchingKeys[0]], nil
+	} else if len(matchingKeys) > 1 {
+		errMsg := fmt.Sprintf("found multiple chains matching '%s':\n", name)
+		for _, key := range matchingKeys {
+			errMsg += fmt.Sprintf("- %s\n", key)
+		}
+		return 0, fmt.Errorf("%s \nPlease specify a more precise name", errMsg)
+	}
+
+	return 0, fmt.Errorf("chain not found for name '%s'", name)
 }
 
 func findChainInByID(decoder *json.Decoder, targetChainId uint64) (*ChainData, error) {
@@ -332,46 +360,6 @@ func findChainInByID(decoder *json.Decoder, targetChainId uint64) (*ChainData, e
 	}
 
 	return nil, ErrChainNotFound
-}
-
-func findChainIDInByName(decoder *json.Decoder, targetName string) (uint64, error) {
-	// Read opening brace of byName object
-	if _, err := decoder.Token(); err != nil {
-		return 0, fmt.Errorf("failed to read byName object: %v", err)
-	}
-
-	// Read through byName entries
-	for decoder.More() {
-		token, err := decoder.Token()
-		if err != nil {
-			return 0, fmt.Errorf("failed to read byName entry: %v", err)
-		}
-
-		if str, ok := token.(string); ok && str == targetName {
-			// Found our name, read the chain ID
-			token, err := decoder.Token()
-			if err != nil {
-				return 0, fmt.Errorf("failed to read chain ID: %v", err)
-			}
-
-			if num, ok := token.(json.Number); ok {
-				chainId, err := strconv.ParseUint(string(num), 10, 64)
-				if err != nil {
-					return 0, fmt.Errorf("failed to parse chain ID: %v", err)
-				}
-				return chainId, nil
-			} else {
-				return 0, fmt.Errorf("unexpected chain ID format: %v", token)
-			}
-		} else {
-			// Skip this entry
-			if err := skipValue(decoder); err != nil {
-				return 0, err
-			}
-		}
-	}
-
-	return 0, ErrChainNotFound
 }
 
 func skipValue(decoder *json.Decoder) error {
