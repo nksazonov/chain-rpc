@@ -5,7 +5,9 @@ A fast and reliable CLI tool for finding working RPC endpoints for blockchain ne
 ## Features
 
 - **Fast RPC Discovery**: Concurrently tests multiple RPC endpoints to find working ones quickly
-- **Chain Lookup**: Support for both chain ID (number) and chain name (string) lookups
+- **Smart Chain Lookup**: Intelligent chain name search with fallback strategies
+- **Protocol Support**: Full support for both HTTP/HTTPS and WebSocket RPC endpoints
+- **Protocol Filtering**: Filter results by protocol type (--https, --wss)
 - **Smart Caching**: Local cache with 30-day TTL for faster subsequent lookups
 - **Multiple Output Modes**: Get first working RPC, all working RPCs, or untested URLs
 - **Chain Info**: Retrieve chain names and IDs for reference
@@ -46,6 +48,8 @@ chain-rpc name 1               # Returns: Ethereum Mainnet
 #### Global Flags
 
 - `--no-test`: Return RPC URLs without testing them
+- `--https`: Return only HTTPS RPC URLs
+- `--wss`: Return only WebSocket (WSS) RPC URLs
 - `-v, --verbose`: Enable verbose output
 - `-f, --force`: Force rebuild cache
 - `-t, --timeout duration`: Timeout for RPC testing (default: 200ms)
@@ -56,14 +60,23 @@ chain-rpc name 1               # Returns: Ethereum Mainnet
 # Get untested RPC URLs (fastest)
 chain-rpc 1 --no-test
 
+# Get only HTTPS endpoints
+chain-rpc 1 --https
+
+# Get only WebSocket endpoints
+chain-rpc ethereum --wss
+
 # Find working RPC with longer timeout
 chain-rpc 1 --timeout 5s
 
 # Verbose output with cache rebuild
 chain-rpc polygon --verbose --force
 
-# Get all working RPCs without testing
-chain-rpc all 1 --no-test
+# Get all HTTPS RPCs without testing
+chain-rpc all 1 --https --no-test
+
+# Get all WebSocket RPCs for Polygon
+chain-rpc all polygon --wss
 ```
 
 ### Cache Management
@@ -85,10 +98,16 @@ The cache is automatically managed and stored in your system's cache directory (
 ## How It Works
 
 1. **Data Source**: Fetches blockchain network data from [chainlist.org/rpcs.json](https://chainlist.org/rpcs.json)
-2. **Caching**: Stores data locally for 30 days to avoid repeated API calls
-3. **RPC Testing**: Tests endpoints using `eth_chainId` JSON-RPC call
-4. **Concurrent Testing**: Tests multiple endpoints simultaneously for speed
-5. **Chain Validation**: Ensures returned chain ID matches the expected one
+2. **Smart Chain Search**: Multi-tier lookup strategy:
+   - Direct match (e.g., `linea-mainnet`)
+   - Ethereum chains (e.g., `ethereum-sepolia`)  
+   - Mainnet chains (e.g., `base-mainnet`)
+   - Partial match (e.g., `on-xdai` in `arbitrum-on-xdai`)
+3. **Caching**: Stores data locally for 30 days to avoid repeated API calls
+4. **Protocol Support**: Tests both HTTP/HTTPS and WebSocket endpoints
+5. **RPC Testing**: Tests endpoints using `eth_chainId` JSON-RPC call
+6. **Concurrent Testing**: Tests multiple endpoints simultaneously for speed
+7. **Chain Validation**: Ensures returned chain ID matches the expected one
 
 ## Architecture
 
@@ -110,6 +129,7 @@ The tool is structured into three main packages:
 #### RPC Testing (`pkg/rpc/tester.go`)
 
 - Concurrent testing of multiple endpoints
+- Support for both HTTP/HTTPS and WebSocket protocols
 - Configurable timeouts
 - Chain ID validation using `eth_chainId` method
 - Load balancing through result shuffling
@@ -149,19 +169,31 @@ The tool provides clear error messages for common issues:
 $ chain-rpc 1
 https://rpc.flashbots.net/fast
 
-# All working Polygon RPCs
-$ chain-rpc all 137
+# Get WebSocket endpoint for Ethereum
+$ chain-rpc ethereum --wss
+wss://ethereum-rpc.publicnode.com
+
+# All working Polygon HTTPS RPCs
+$ chain-rpc all 137 --https
 https://polygon-rpc.com
 https://rpc-mainnet.matic.network
 https://matic-mainnet.chainstacklabs.com
 
-# Chain lookup
+# Chain lookup with smart search
 $ chain-rpc id "binance smart chain"
 56
+
+# Partial name matching
+$ chain-rpc id "on-xdai"  # matches arbitrum-on-xdai
+200
 
 # Get untested URLs (fastest)
 $ chain-rpc ethereum --no-test
 https://eth.llamarpc.com
+
+# Get only WebSocket URLs without testing
+$ chain-rpc polygon --wss --no-test
+wss://polygon-bor-rpc.publicnode.com
 
 # Force cache refresh
 $ chain-rpc polygon --force --verbose
@@ -179,3 +211,4 @@ https://polygon-mainnet.g.alchemy.com/v2/demo
 ## Dependencies
 
 - [github.com/spf13/cobra](https://github.com/spf13/cobra) - CLI framework
+- [github.com/gorilla/websocket](https://github.com/gorilla/websocket) - WebSocket support
