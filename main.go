@@ -15,6 +15,10 @@ import (
 
 const (
 	version = "0.1.1"
+
+	// ANSI color codes
+	colorRed   = "\033[31m"
+	colorReset = "\033[0m"
 )
 
 var (
@@ -122,35 +126,6 @@ func extractRPCUrls(rpcs []chain.RPC) []string {
 	return urls
 }
 
-// Custom error type for parameter errors
-type ParameterError struct {
-	message string
-}
-
-func (e *ParameterError) Error() string {
-	return e.message
-}
-
-func NewParameterError(message string) *ParameterError {
-	return &ParameterError{message: message}
-}
-
-// Check if error is a parameter-related error
-func isParameterError(err error) bool {
-	_, ok := err.(*ParameterError)
-	return ok
-}
-
-// Custom argument validator that returns ParameterError
-func exactArgsWithParameterError(n int) cobra.PositionalArgs {
-	return func(cmd *cobra.Command, args []string) error {
-		if len(args) != n {
-			return NewParameterError(fmt.Sprintf("accepts %d arg(s), received %d", n, len(args)))
-		}
-		return nil
-	}
-}
-
 var cacheCmd = &cobra.Command{
 	Use:   "cache",
 	Short: "Manage chain data cache",
@@ -247,10 +222,11 @@ func init() {
 	nameCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
 	nameCmd.Flags().BoolVarP(&force, "force", "f", false, "force rebuild cache")
 
-	// Set SilenceUsage for all commands to prevent automatic help on errors
+	// Set SilenceUsage and SilenceErrors for all commands to prevent automatic output on errors
 	commands := []*cobra.Command{rootCmd, allCmd, idCmd, nameCmd, cacheCmd, cacheCleanCmd, cacheBuildCmd, versionCmd}
 	for _, cmd := range commands {
 		cmd.SilenceUsage = true
+		cmd.SilenceErrors = true
 	}
 
 	// Handle flag errors by converting to ParameterError
@@ -267,6 +243,7 @@ func init() {
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, formatError(err))
 		if isParameterError(err) {
 			fmt.Fprintln(os.Stderr, "")
 			rootCmd.Help()
