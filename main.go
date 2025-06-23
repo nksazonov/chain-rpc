@@ -28,7 +28,7 @@ var rootCmd = &cobra.Command{
 	Use:   "chain-rpc <chainId|chainName>",
 	Short: "Find first working RPC endpoint for a blockchain network",
 	Long:  "Fetches chain data from `chainlist.org` and tests RPC endpoints to find the first working one. Accepts either chain ID (number) or chain name (string)",
-	Args:  cobra.ExactArgs(1),
+	Args:  exactArgsWithParameterError(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		chain.SetVerbose(verbose)
 		chain.SetForceRebuild(force)
@@ -62,7 +62,7 @@ var allCmd = &cobra.Command{
 	Use:   "all <chainId|chainName>",
 	Short: "Find all working RPC endpoints for a blockchain network",
 	Long:  "Fetches chain data from ethereum-lists/chains and tests all RPC endpoints to find working ones. Accepts either chain ID (number) or chain name (string)",
-	Args:  cobra.ExactArgs(1),
+	Args:  exactArgsWithParameterError(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		chain.SetVerbose(verbose)
 		chain.SetForceRebuild(force)
@@ -122,6 +122,35 @@ func extractRPCUrls(rpcs []chain.RPC) []string {
 	return urls
 }
 
+// Custom error type for parameter errors
+type ParameterError struct {
+	message string
+}
+
+func (e *ParameterError) Error() string {
+	return e.message
+}
+
+func NewParameterError(message string) *ParameterError {
+	return &ParameterError{message: message}
+}
+
+// Check if error is a parameter-related error
+func isParameterError(err error) bool {
+	_, ok := err.(*ParameterError)
+	return ok
+}
+
+// Custom argument validator that returns ParameterError
+func exactArgsWithParameterError(n int) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) != n {
+			return NewParameterError(fmt.Sprintf("accepts %d arg(s), received %d", n, len(args)))
+		}
+		return nil
+	}
+}
+
 var cacheCmd = &cobra.Command{
 	Use:   "cache",
 	Short: "Manage chain data cache",
@@ -150,7 +179,7 @@ var idCmd = &cobra.Command{
 	Use:   "id <chainName>",
 	Short: "Get chain ID from chain name",
 	Long:  "Returns the chain ID for the given chain name",
-	Args:  cobra.ExactArgs(1),
+	Args:  exactArgsWithParameterError(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		chain.SetVerbose(verbose)
 		chain.SetForceRebuild(force)
@@ -169,14 +198,14 @@ var nameCmd = &cobra.Command{
 	Use:   "name <chainId>",
 	Short: "Get chain name from chain ID",
 	Long:  "Returns the chain name for the given chain ID",
-	Args:  cobra.ExactArgs(1),
+	Args:  exactArgsWithParameterError(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		chain.SetVerbose(verbose)
 		chain.SetForceRebuild(force)
 
 		chainId, err := strconv.ParseUint(args[0], 10, 64)
 		if err != nil {
-			return fmt.Errorf("chainId must be a valid number")
+			return NewParameterError("chainId must be a valid number")
 		}
 
 		chainData, err := chain.FetchChainData(chainId)
@@ -218,6 +247,17 @@ func init() {
 	nameCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
 	nameCmd.Flags().BoolVarP(&force, "force", "f", false, "force rebuild cache")
 
+	// Set SilenceUsage for all commands to prevent automatic help on errors
+	commands := []*cobra.Command{rootCmd, allCmd, idCmd, nameCmd, cacheCmd, cacheCleanCmd, cacheBuildCmd, versionCmd}
+	for _, cmd := range commands {
+		cmd.SilenceUsage = true
+	}
+
+	// Handle flag errors by converting to ParameterError
+	rootCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		return NewParameterError(err.Error())
+	})
+
 	rootCmd.AddCommand(allCmd)
 	rootCmd.AddCommand(cacheCmd)
 	rootCmd.AddCommand(idCmd)
@@ -227,6 +267,10 @@ func init() {
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
+		if isParameterError(err) {
+			fmt.Fprintln(os.Stderr, "")
+			rootCmd.Help()
+		}
 		os.Exit(1)
 	}
 }
