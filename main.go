@@ -180,7 +180,7 @@ var nameCmd = &cobra.Command{
 
 		chainId, err := strconv.ParseUint(args[0], 10, 64)
 		if err != nil {
-			return NewParameterError("chainId must be a valid number")
+			return NewParameterErrorWithCmd("chainId must be a valid number", cmd)
 		}
 
 		chainData, err := chain.FetchChainData(chainId)
@@ -229,10 +229,14 @@ func init() {
 		cmd.SilenceErrors = true
 	}
 
-	// Handle flag errors by converting to ParameterError
-	rootCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
-		return NewParameterError(err.Error())
-	})
+	// Handle flag errors by converting to ParameterError for all commands
+	flagErrorFunc := func(cmd *cobra.Command, err error) error {
+		return NewParameterErrorWithCmd(err.Error(), cmd)
+	}
+	
+	for _, cmd := range commands {
+		cmd.SetFlagErrorFunc(flagErrorFunc)
+	}
 
 	rootCmd.AddCommand(allCmd)
 	rootCmd.AddCommand(cacheCmd)
@@ -244,9 +248,13 @@ func init() {
 func main() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, formatError(err))
-		if isParameterError(err) {
+		if paramErr, ok := err.(*ParameterError); ok {
 			fmt.Fprintln(os.Stderr, "")
-			rootCmd.Help()
+			if paramErr.cmd != nil {
+				paramErr.cmd.Help()
+			} else {
+				rootCmd.Help()
+			}
 		}
 		os.Exit(1)
 	}
