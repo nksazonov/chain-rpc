@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"chain-rpc/pkg/chain"
@@ -22,10 +23,12 @@ const (
 )
 
 var (
-	noTest  bool
-	verbose bool
-	force   bool
-	timeout time.Duration
+	noTest    bool
+	verbose   bool
+	force     bool
+	timeout   time.Duration
+	wsOnly    bool
+	httpsOnly bool
 )
 
 var rootCmd = &cobra.Command{
@@ -42,7 +45,7 @@ var rootCmd = &cobra.Command{
 			return err
 		}
 
-		rpcUrls := extractRPCUrls(chainData.RPCs)
+		rpcUrls := extractRPCUrls(chainData.RPCs, wsOnly, httpsOnly)
 		if len(rpcUrls) == 0 {
 			return fmt.Errorf("no known rpc urls for this chain at `chainlist.org`")
 		}
@@ -76,7 +79,7 @@ var allCmd = &cobra.Command{
 			return err
 		}
 
-		rpcUrls := extractRPCUrls(chainData.RPCs)
+		rpcUrls := extractRPCUrls(chainData.RPCs, wsOnly, httpsOnly)
 		if len(rpcUrls) == 0 {
 			return fmt.Errorf("no known rpc urls for this chain at `chainlist.org`")
 		}
@@ -116,14 +119,29 @@ func getChainData(identifier string) (*chain.ChainData, error) {
 	return chain.FetchChainDataByName(identifier)
 }
 
-func extractRPCUrls(rpcs []chain.RPC) []string {
+func extractRPCUrls(rpcs []chain.RPC, wsOnly, httpsOnly bool) []string {
 	urls := make([]string, 0, len(rpcs))
 	for _, rpc := range rpcs {
 		if rpc.URL != "" {
+			// Apply filtering based on flags
+			if wsOnly && !isWebSocketURL(rpc.URL) {
+				continue
+			}
+			if httpsOnly && !isHTTPSURL(rpc.URL) {
+				continue
+			}
 			urls = append(urls, rpc.URL)
 		}
 	}
 	return urls
+}
+
+func isWebSocketURL(url string) bool {
+	return strings.HasPrefix(url, "ws://") || strings.HasPrefix(url, "wss://")
+}
+
+func isHTTPSURL(url string) bool {
+	return strings.HasPrefix(url, "https://")
 }
 
 var cacheCmd = &cobra.Command{
@@ -207,11 +225,15 @@ func init() {
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
 	rootCmd.Flags().BoolVarP(&force, "force", "f", false, "force rebuild cache")
 	rootCmd.Flags().DurationVarP(&timeout, "timeout", "t", 200*time.Millisecond, "timeout for RPC testing")
+	rootCmd.Flags().BoolVar(&wsOnly, "wss", false, "return only WebSocket RPC URLs")
+	rootCmd.Flags().BoolVar(&httpsOnly, "https", false, "return only HTTPS RPC URLs")
 
 	allCmd.Flags().BoolVar(&noTest, "no-test", false, "return all RPC URLs without testing them")
 	allCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
 	allCmd.Flags().BoolVarP(&force, "force", "f", false, "force rebuild cache")
 	allCmd.Flags().DurationVarP(&timeout, "timeout", "t", 200*time.Millisecond, "timeout for RPC testing")
+	allCmd.Flags().BoolVar(&wsOnly, "wss", false, "return only WebSocket RPC URLs")
+	allCmd.Flags().BoolVar(&httpsOnly, "https", false, "return only HTTPS RPC URLs")
 
 	cacheCmd.AddCommand(cacheCleanCmd)
 	cacheCmd.AddCommand(cacheBuildCmd)
@@ -233,7 +255,7 @@ func init() {
 	flagErrorFunc := func(cmd *cobra.Command, err error) error {
 		return NewParameterErrorWithCmd(err.Error(), cmd)
 	}
-	
+
 	for _, cmd := range commands {
 		cmd.SetFlagErrorFunc(flagErrorFunc)
 	}
