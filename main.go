@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	version = "0.1.1"
+	version = "0.1.2"
 
 	// ANSI color codes
 	colorRed   = "\033[31m"
