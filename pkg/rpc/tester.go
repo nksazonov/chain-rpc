@@ -7,9 +7,13 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 type RPCRequest struct {
@@ -112,6 +116,17 @@ func findWorkingRPCsConcurrently(rpcURLs []string, expectedChainID uint64, timeo
 }
 
 func isRPCWorkingWithTimeout(rpcURL string, expectedChainID uint64, timeout time.Duration) bool {
+	if isWebSocketURL(rpcURL) {
+		return isWebSocketRPCWorking(rpcURL, expectedChainID, timeout)
+	}
+	return isHTTPRPCWorking(rpcURL, expectedChainID, timeout)
+}
+
+func isWebSocketURL(rpcURL string) bool {
+	return strings.HasPrefix(rpcURL, "wss://")
+}
+
+func isHTTPRPCWorking(rpcURL string, expectedChainID uint64, timeout time.Duration) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -147,6 +162,69 @@ func isRPCWorkingWithTimeout(rpcURL string, expectedChainID uint64, timeout time
 
 	var rpcResp RPCResponse
 	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+		return false
+	}
+
+	if rpcResp.Error != nil {
+		return false
+	}
+
+	chainIDHex, ok := rpcResp.Result.(string)
+	if !ok {
+		return false
+	}
+
+	chainID, err := strconv.ParseUint(chainIDHex, 0, 64)
+	if err != nil {
+		return false
+	}
+
+	return chainID == expectedChainID
+}
+
+func isWebSocketRPCWorking(rpcURL string, expectedChainID uint64, timeout time.Duration) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	// Parse URL for websocket connection
+	u, err := url.Parse(rpcURL)
+	if err != nil {
+		return false
+	}
+
+	// Create websocket dialer with timeout
+	dialer := websocket.Dialer{
+		HandshakeTimeout: timeout,
+	}
+
+	// Connect to websocket
+	conn, _, err := dialer.DialContext(ctx, u.String(), nil)
+	if err != nil {
+		return false
+	}
+	defer conn.Close()
+
+	// Set read/write deadlines
+	deadline := time.Now().Add(timeout)
+	conn.SetReadDeadline(deadline)
+	conn.SetWriteDeadline(deadline)
+
+	// Prepare RPC request
+	request := RPCRequest{
+		JSONRPC: "2.0",
+		Method:  "eth_chainId",
+		Params:  []any{},
+		ID:      1,
+	}
+
+	// Send JSON-RPC request
+	if err := conn.WriteJSON(request); err != nil {
+		return false
+	}
+
+	// Read response
+	var rpcResp RPCResponse
+	if err := conn.ReadJSON(&rpcResp); err != nil {
 		return false
 	}
 
